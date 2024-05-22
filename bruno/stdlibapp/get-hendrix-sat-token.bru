@@ -1,0 +1,20 @@
+meta {
+  name: jwt_hendrix_sat
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{url_sat}}
+  body: none
+  auth: none
+}
+
+headers {
+  X-Client-Id: hendrix
+  X-Client-secret: {{client_secret_hendrix_sat}}
+}
+
+vars:post-response {
+  jwt_hendrix_sat: res.body.access_token
+}

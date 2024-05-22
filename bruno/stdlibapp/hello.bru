@@ -5,7 +5,17 @@ meta {
 }
 
 get {
-  url: localhost:5118/hello
-  body: none
-  auth: none
+  url: http://localhost:19631/hello
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{jwt_hendrix_sat}}
+}
+
+body:json {
+  {
+    "name": "bobo"
+  }
 }

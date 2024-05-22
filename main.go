@@ -42,7 +42,6 @@ type AppConfig struct {
 	Health       health.ServiceConfig  `yaml:"health"`
 	Tracing      kittytrace.Config     `yaml:"tracing" config:"required"`
 	SATClient    sat.ClientConfig      `yaml:"satClient" json:"satClient"`
-	SatSecret    string                `yaml:"sat_secret" json:"sat_secret" config:"sensitive"`
 	JWTConfig    jwt.JWTConfig         `yaml:"jwtConfig"`
 	Downstream   DownstreamConfig      `yaml:"downstream"`
 }
