@@ -1,4 +1,4 @@
-package hello
+package dictionary
 
 import (
 	"context"
@@ -10,24 +10,24 @@ import (
 )
 
 const (
-	pathHello = "/hello"
+	pathLookup = "/lookup"
 )
 
-func NewRequestHandlers(logger plog.Logger, service Service) []kittyserver.RequestHandler {
-	e := NewEndpoints(logger, service)
+func NewRequestHandlers(logger plog.Logger, componentName, handlerName string, service Service) []kittyserver.RequestHandler {
+	e := NewEndpoints(logger, componentName, service)
 
 	return []kittyserver.RequestHandler{
-		newHelloHandler(e),
+		newLookupWordHandler(handlerName, e),
 	}
 }
 
-func newHelloHandler(e Endpoints) kittyserver.RequestHandler {
+func newLookupWordHandler(handlerName string, e Endpoints) kittyserver.RequestHandler {
 	return kittyserver.NewRequestHandler(
-		"hello",
-		e.NewHelloEndpoint(),
+		handlerName,
+		e.NewLookupWordEndpoint(),
 		decodeJSON[Request],
 		kittyhttp.EncodeJSONResponse,
-		pathHello,
+		pathLookup,
 		[]string{http.MethodGet},
 		[]jwt.Scope{AdminScope},
 	)

@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/StephenGriese/stdlibapp/hello"
+	"github.com/StephenGriese/stdlibapp/dictionary"
 	"github.com/comcast-pulse/kitty/auth/jwt"
 	"github.com/comcast-pulse/kitty/auth/jwt/sat"
 	"github.com/comcast-pulse/kitty/health"
@@ -47,8 +47,8 @@ type AppConfig struct {
 }
 
 type DownstreamConfig struct {
-	kittyclient.OptionalServiceConfig
-	Name string `yaml:"name"`
+	kittyclient.OptionalServiceConfig `yaml:",inline"`
+	Name                              string `yaml:"name"`
 }
 
 // flags holds the command line options
@@ -103,12 +103,12 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 		return fmt.Errorf("error creating SAT service: %w", err)
 	}
 
-	helloClient := newHelloClient(logger, metricsFactory, appConfig.Downstream, satWsTokenService, clientOpts...)
-	helloService := newHelloService(logger, helloClient, appConfig)
+	client := newClient(logger, appConfig.Downstream.Name, metricsFactory, appConfig.Downstream, satWsTokenService, clientOpts...)
+	service := newService(logger, appConfig.Downstream.Name, client, appConfig)
 
 	var wg sync.WaitGroup
 
-	httpServer := newHTTPServer(ctx, logger, metricsFactory, tracer, appConfig, helloService, satWsKeyService)
+	httpServer := newHTTPServer(ctx, logger, metricsFactory, tracer, appConfig, service, satWsKeyService)
 
 	wg.Add(1)
 	go func() {
@@ -127,7 +127,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 }
 
 func newHTTPServer(ctx context.Context, logger plog.Logger, metricsFactory kittymetrics.Factory, tracer opentracing.Tracer,
-	appConfig AppConfig, helloService hello.Service, keyServices ...jwt.KeyService) kittyserver.Server {
+	appConfig AppConfig, dictionaryService dictionary.Service, keyServices ...jwt.KeyService) kittyserver.Server {
 	srvrOpts := []kittyserver.ServerOption{
 		kittyserver.WithPort(appConfig.Port),
 		kittyserver.WithLogger(logger),
@@ -139,8 +139,8 @@ func newHTTPServer(ctx context.Context, logger plog.Logger, metricsFactory kitty
 		kittyserver.WithServerTracer(tracer),
 		kittyserver.WithWebsec(appConfig.JWTConfig, jwt.NewKeyStore(keyServices...)),
 		kittyserver.WithErrorEncoder(kittyhttp.EncodeCodedErrorsResponse),
-		kittyserver.WithAdminScope(hello.AdminScope),
-		kittyserver.WithRequestHandlers(hello.NewRequestHandlers(logger, helloService)),
+		kittyserver.WithAdminScope(dictionary.AdminScope),
+		kittyserver.WithRequestHandlers(dictionary.NewRequestHandlers(logger, appConfig.AppName, "lookup handler", dictionaryService)),
 		kittyserver.WithConfig(appConfig),
 	}
 
@@ -153,34 +153,34 @@ func newHTTPServer(ctx context.Context, logger plog.Logger, metricsFactory kitty
 	return s
 }
 
-func newHelloClient(logger plog.Logger, metricsFactory kittymetrics.Factory, config DownstreamConfig, tokenService jwt.TokenService, clientOpts ...kittyclient.Option) hello.Client {
-	if !config.Enabled {
+func newClient(logger plog.Logger, clientComponentName string, metricsFactory kittymetrics.Factory, downstreamConfig DownstreamConfig, tokenService jwt.TokenService, clientOpts ...kittyclient.Option) dictionary.Client {
+	if !downstreamConfig.Enabled {
 		logger.Info(context.Background(), "Client is disabled.")
 		return nil
 	}
-	clientOpts = append(clientOpts, kittyclient.WithClientConfig(config.Client))
-	clientOpts = kittyclient.AppendRetryConfigOpts(config.Retry, clientOpts...)
+	clientOpts = append(clientOpts, kittyclient.WithClientConfig(downstreamConfig.Client))
+	clientOpts = kittyclient.AppendRetryConfigOpts(downstreamConfig.Retry, clientOpts...)
 
-	logger.Info(context.Background(), "Using Client", "url", config.URL, "clientOpts", clientOpts)
+	logger.Info(context.Background(), "Using Client", "url", downstreamConfig.URL, "clientOpts", clientOpts)
 
-	client := hello.NewHTTPClient(logger, config.URL, tokenService, clientOpts...)
-	client = hello.WithLoggingClient(logger, client)
-	client = hello.WithInstrumentingClient(metricsFactory, client)
+	client := dictionary.NewHTTPClient(logger, downstreamConfig.Name, downstreamConfig.Name, downstreamConfig.URL, tokenService, clientOpts...)
+	client = dictionary.WithLoggingClient(logger, clientComponentName, client)
+	client = dictionary.WithInstrumentingClient(metricsFactory, downstreamConfig.Name, client)
 
 	return client
 }
 
-func newHelloService(logger plog.Logger, helloClient hello.Client, config AppConfig) hello.Service {
+func newService(logger plog.Logger, serviceComponentName string, client dictionary.Client, config AppConfig) dictionary.Service {
 
-	svcOpts := []hello.ServiceOption{
-		hello.WithID(config.AppName),
-		hello.WithLogger(logger),
+	svcOpts := []dictionary.ServiceOption{
+		dictionary.WithAppName(config.AppName),
+		dictionary.WithLogger(logger),
 	}
-	if helloClient != nil {
-		svcOpts = append(svcOpts, hello.WithHelloClient(helloClient))
+	if client != nil {
+		svcOpts = append(svcOpts, dictionary.WithClient(client))
 	}
-	service := hello.NewService(svcOpts...)
-	service = hello.WithLoggingService(logger, service)
+	service := dictionary.NewService(svcOpts...)
+	service = dictionary.WithLoggingService(logger, serviceComponentName, service)
 
 	return service
 }

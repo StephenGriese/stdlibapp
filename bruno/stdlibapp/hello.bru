@@ -5,7 +5,7 @@ meta {
 }
 
 get {
-  url: http://localhost:19631/hello
+  url: http://localhost:19633/lookup
   body: json
   auth: bearer
 }
@@ -16,6 +16,6 @@ auth:bearer {
 
 body:json {
   {
-    "name": "bobo"
+    "word": "bird"
   }
 }

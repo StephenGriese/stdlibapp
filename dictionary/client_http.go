@@ -1,4 +1,4 @@
-package hello
+package dictionary
 
 import (
 	"context"
@@ -16,24 +16,24 @@ import (
 
 type httpClient struct {
 	logger plog.Logger
-	hello  endpoint.Endpoint
+	lookup endpoint.Endpoint
 }
 
-func NewHTTPClient(logger plog.Logger, baseURL string, tokenService jwt.TokenService, opts ...kittyclient.Option) Client {
+func NewHTTPClient(logger plog.Logger, systemName string, clientComponentName string, baseURL string, tokenService jwt.TokenService, opts ...kittyclient.Option) Client {
 	logger = logger.WithComponent(clientComponentName)
 	opts = append(opts, kittyclient.WithClientBefore(jwt.WithHTTPAuthHeader(tokenService)))
 
 	// TODO use kittyClient.WithRetries like in vbom nona http_client.go
 
-	hello := kittyclient.NewClient(
-		naming.NewOperation(systemName, pathHello),
+	lookup := kittyclient.NewClient(
+		naming.NewOperation(systemName, pathLookup),
 		http.MethodGet,
-		url.MustAppend(url.MustParse(baseURL), pathHello),
+		url.MustAppend(url.MustParse(baseURL), pathLookup),
 		kittyhttp.EncodeJSONBody,
 		kittyclient.NewJSONDecoder(
 			logger,
 			kittyclient.WithSystemName(systemName),
-			kittyclient.WithOperationDescription("hello"),
+			kittyclient.WithOperationDescription("lookup word"),
 			kittyclient.WithErrorResponseFactory(func() error {
 				return new(errorResponse)
 			}),
@@ -47,12 +47,13 @@ func NewHTTPClient(logger plog.Logger, baseURL string, tokenService jwt.TokenSer
 
 	return httpClient{
 		logger: logger,
-		hello:  hello,
+		lookup: lookup,
 	}
 }
 
-func (client httpClient) Hello(ctx context.Context, name string) (string, error) {
-	resp, err := client.hello(ctx, name)
+func (client httpClient) LookupWord(ctx context.Context, name string) (string, error) {
+	req := Request{Word: name}
+	resp, err := client.lookup(ctx, req)
 	if err != nil {
 		return "", err
 	}

@@ -1,4 +1,4 @@
-package hello
+package dictionary
 
 import "github.com/comcast-pulse/kitty/auth/jwt"
 
