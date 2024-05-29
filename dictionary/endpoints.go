@@ -34,7 +34,7 @@ func (e endpoints) NewLookupWordEndpoint() endpoint.Endpoint {
 		e.logger.Info(ctx, "QQQ NewLookupWordEndpoint called", "request", request)
 		req := request.(Request)
 
-		// TODO Add validation?
+		// FUTURE: Add validation?
 		return e.service.LookupWord(ctx, req.Word)
 	}
 }
