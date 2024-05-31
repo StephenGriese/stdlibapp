@@ -1,8 +1,9 @@
-package dictionary
+package ngb
 
 import (
 	"context"
 	"fmt"
+	"github.com/StephenGriese/stdlibapp/dictionary"
 	plog "github.com/comcast-pulse/log"
 )
 
@@ -13,7 +14,7 @@ type Service interface {
 type service struct {
 	logger  plog.Logger
 	appName string
-	client  Client
+	client  dictionary.Client
 }
 
 var _ Service = &service{}
@@ -44,7 +45,7 @@ func WithLogger(logger plog.Logger) ServiceOption {
 }
 
 // WithClient returns a ServiceOption that sets the client on the service.
-func WithClient(client Client) ServiceOption {
+func WithClient(client dictionary.Client) ServiceOption {
 	return func(s service) service {
 		s.client = client
 		return s

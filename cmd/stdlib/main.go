@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/StephenGriese/stdlibapp/dictionary"
+	"github.com/StephenGriese/stdlibapp/logs"
+	"github.com/StephenGriese/stdlibapp/metrics"
 	"io/ioutil"
 	"log"
 	"net"
@@ -23,6 +26,7 @@ func main() {
 }
 
 type Config struct {
+	AppName       string
 	Port          string
 	DownstreamURL string
 }
@@ -39,12 +43,17 @@ func run(
 
 	config := createConfig(getenv)
 
-	srv := NewServer(config)
+	logger := logs.NewLogger()
+
+	metricsFactory := metrics.NewFactory(config.AppName)
+
+	srv := NewServer(ctx, config, logger, metricsFactory)
 	httpServer := &http.Server{
 		Addr:    net.JoinHostPort("localhost", config.Port),
 		Handler: srv,
 	}
 	go func() {
+		logger.Info(ctx, "starting http server", "addr", httpServer.Addr)
 		log.Printf("listening on %s", httpServer.Addr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Fprintf(os.Stderr, "error listening and serving: %s\n", err)
@@ -70,28 +79,44 @@ func run(
 }
 
 func NewServer(
+	ctx context.Context,
 	config Config,
+	logger dictionary.Logger,
+	metricsFactory metrics.Factory,
 ) http.Handler {
 	mux := http.NewServeMux()
-	addRoutes(mux, config)
+	addRoutes(ctx, mux, config, logger, metricsFactory)
 	var handler http.Handler = mux
 	return handler
 }
 
 func addRoutes(
+	ctx context.Context,
 	mux *http.ServeMux,
 	config Config,
+	logger dictionary.Logger,
+	metricsFactory metrics.Factory,
 ) {
-	mux.Handle("/lookup", handleLookup(config.DownstreamURL))
+	mux.Handle("/lookup", handleLookup(ctx, logger, config.DownstreamURL))
+	mux.Handle("/metrics", handleGetMetrics(ctx, logger, metricsFactory))
 }
 
-func handleLookup(downstreamURL string) http.Handler {
+func handleGetMetrics(ctx context.Context, logger dictionary.Logger, metricsFactory metrics.Factory) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.Info(ctx, "handleGetMetrics called")
+		metricsFactory.HTTPHandlerFor().ServeHTTP(w, r)
+	})
+}
+
+func handleLookup(ctx context.Context, logger dictionary.Logger, downstreamURL string) http.Handler {
 	if downstreamURL == "" {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			logger.Info(ctx, "handleLookup called", "downstreamURL", downstreamURL)
 			w.Write([]byte("hey!! lookup"))
 		})
 	} else {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			logger.Info(ctx, "handleLookup called", "downstreamURL", downstreamURL)
 			// Define the URL of the external server
 			externalURL := downstreamURL + r.URL.Path
 

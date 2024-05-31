@@ -1,17 +1,18 @@
-package dictionary
+package ngb
 
 import (
 	"context"
+	"github.com/StephenGriese/stdlibapp/dictionary"
 	kittymetrics "github.com/comcast-pulse/kitty/metrics"
 	"time"
 )
 
 type instrumentingClient struct {
 	kittymetrics.ServiceStatistics
-	client Client
+	client dictionary.Client
 }
 
-func WithInstrumentingClient(metrics kittymetrics.Factory, clientComponentName string, client Client) Client {
+func WithInstrumentingClient(metrics kittymetrics.Factory, clientComponentName string, client dictionary.Client) dictionary.Client {
 	return instrumentingClient{metrics.NewServiceStatistics(clientComponentName), client}
 }
 

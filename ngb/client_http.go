@@ -1,7 +1,8 @@
-package dictionary
+package ngb
 
 import (
 	"context"
+	"github.com/StephenGriese/stdlibapp/dictionary"
 	"github.com/comcast-pulse/kitty/auth/jwt"
 	kittyhttp "github.com/comcast-pulse/kitty/http"
 	kittyclient "github.com/comcast-pulse/kitty/http/client"
@@ -19,7 +20,7 @@ type httpClient struct {
 	lookup endpoint.Endpoint
 }
 
-func NewHTTPClient(logger plog.Logger, systemName string, clientComponentName string, baseURL string, tokenService jwt.TokenService, opts ...kittyclient.Option) Client {
+func NewHTTPClient(logger plog.Logger, systemName string, clientComponentName string, baseURL string, tokenService jwt.TokenService, opts ...kittyclient.Option) dictionary.Client {
 	logger = logger.WithComponent(clientComponentName)
 	opts = append(opts, kittyclient.WithClientBefore(jwt.WithHTTPAuthHeader(tokenService)))
 

@@ -1,4 +1,4 @@
-package dictionary
+package ngb
 
 type Request struct {
 	Word string `json:"word"`

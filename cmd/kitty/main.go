@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/StephenGriese/stdlibapp/dictionary"
+	"github.com/StephenGriese/stdlibapp/ngb"
 	"github.com/comcast-pulse/kitty/auth/jwt"
 	"github.com/comcast-pulse/kitty/auth/jwt/sat"
 	"github.com/comcast-pulse/kitty/health"
@@ -127,7 +128,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 }
 
 func newHTTPServer(ctx context.Context, logger plog.Logger, metricsFactory kittymetrics.Factory, tracer opentracing.Tracer,
-	appConfig AppConfig, dictionaryService dictionary.Service, keyServices ...jwt.KeyService) kittyserver.Server {
+	appConfig AppConfig, dictionaryService ngb.Service, keyServices ...jwt.KeyService) kittyserver.Server {
 	srvrOpts := []kittyserver.ServerOption{
 		kittyserver.WithPort(appConfig.Port),
 		kittyserver.WithLogger(logger),
@@ -139,8 +140,8 @@ func newHTTPServer(ctx context.Context, logger plog.Logger, metricsFactory kitty
 		kittyserver.WithServerTracer(tracer),
 		kittyserver.WithWebsec(appConfig.JWTConfig, jwt.NewKeyStore(keyServices...)),
 		kittyserver.WithErrorEncoder(kittyhttp.EncodeCodedErrorsResponse),
-		kittyserver.WithAdminScope(dictionary.AdminScope),
-		kittyserver.WithRequestHandlers(dictionary.NewRequestHandlers(logger, appConfig.AppName, "lookup handler", dictionaryService)),
+		kittyserver.WithAdminScope(ngb.AdminScope),
+		kittyserver.WithRequestHandlers(ngb.NewRequestHandlers(logger, appConfig.AppName, "lookup handler", dictionaryService)),
 		kittyserver.WithConfig(appConfig),
 	}
 
@@ -163,24 +164,24 @@ func newClient(logger plog.Logger, clientComponentName string, metricsFactory ki
 
 	logger.Info(context.Background(), "Using Client", "url", downstreamConfig.URL, "clientOpts", clientOpts)
 
-	client := dictionary.NewHTTPClient(logger, downstreamConfig.Name, downstreamConfig.Name, downstreamConfig.URL, tokenService, clientOpts...)
-	client = dictionary.WithLoggingClient(logger, clientComponentName, client)
-	client = dictionary.WithInstrumentingClient(metricsFactory, downstreamConfig.Name, client)
+	client := ngb.NewHTTPClient(logger, downstreamConfig.Name, downstreamConfig.Name, downstreamConfig.URL, tokenService, clientOpts...)
+	client = ngb.WithLoggingClient(logger, clientComponentName, client)
+	client = ngb.WithInstrumentingClient(metricsFactory, downstreamConfig.Name, client)
 
 	return client
 }
 
-func newService(logger plog.Logger, serviceComponentName string, client dictionary.Client, config AppConfig) dictionary.Service {
+func newService(logger plog.Logger, serviceComponentName string, client dictionary.Client, config AppConfig) ngb.Service {
 
-	svcOpts := []dictionary.ServiceOption{
-		dictionary.WithAppName(config.AppName),
-		dictionary.WithLogger(logger),
+	svcOpts := []ngb.ServiceOption{
+		ngb.WithAppName(config.AppName),
+		ngb.WithLogger(logger),
 	}
 	if client != nil {
-		svcOpts = append(svcOpts, dictionary.WithClient(client))
+		svcOpts = append(svcOpts, ngb.WithClient(client))
 	}
-	service := dictionary.NewService(svcOpts...)
-	service = dictionary.WithLoggingService(logger, serviceComponentName, service)
+	service := ngb.NewService(svcOpts...)
+	service = ngb.WithLoggingService(logger, serviceComponentName, service)
 
 	return service
 }

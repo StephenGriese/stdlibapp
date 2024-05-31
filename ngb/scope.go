@@ -1,4 +1,4 @@
-package dictionary
+package ngb
 
 import "github.com/comcast-pulse/kitty/auth/jwt"
 

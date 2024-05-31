@@ -1,17 +1,18 @@
-package dictionary
+package ngb
 
 import (
 	"context"
+	"github.com/StephenGriese/stdlibapp/dictionary"
 	plog "github.com/comcast-pulse/log"
 	"time"
 )
 
 type loggingClient struct {
 	logger plog.Logger
-	client Client
+	client dictionary.Client
 }
 
-func WithLoggingClient(logger plog.Logger, clientComponentName string, client Client) Client {
+func WithLoggingClient(logger plog.Logger, clientComponentName string, client dictionary.Client) dictionary.Client {
 	return loggingClient{logger.WithComponent(clientComponentName), client}
 }
 
