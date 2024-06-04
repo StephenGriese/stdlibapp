@@ -7,6 +7,9 @@ import (
 	"github.com/StephenGriese/stdlibapp/dictionary"
 	"github.com/StephenGriese/stdlibapp/logs"
 	"github.com/StephenGriese/stdlibapp/metrics"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+
 	"io/ioutil"
 	"log"
 	"net"
@@ -45,9 +48,12 @@ func run(
 
 	logger := logs.NewLogger()
 
+	tracer := otel.Tracer(config.AppName)
+	logger.Info(ctx, "got tracer", "tracer", tracer)
+
 	metricsFactory := metrics.NewFactory(config.AppName)
 
-	srv := NewServer(ctx, config, logger, metricsFactory)
+	srv := NewServer(ctx, config, logger, metricsFactory, tracer)
 	httpServer := &http.Server{
 		Addr:    net.JoinHostPort("localhost", config.Port),
 		Handler: srv,
@@ -83,9 +89,10 @@ func NewServer(
 	config Config,
 	logger dictionary.Logger,
 	metricsFactory metrics.Factory,
+	tracer trace.Tracer,
 ) http.Handler {
 	mux := http.NewServeMux()
-	addRoutes(ctx, mux, config, logger, metricsFactory)
+	addRoutes(ctx, mux, config, logger, metricsFactory, tracer)
 	var handler http.Handler = mux
 	return handler
 }
@@ -96,8 +103,9 @@ func addRoutes(
 	config Config,
 	logger dictionary.Logger,
 	metricsFactory metrics.Factory,
+	tracer trace.Tracer,
 ) {
-	mux.Handle("/lookup", handleLookup(ctx, logger, config.DownstreamURL))
+	mux.Handle("/lookup", handleLookup(ctx, logger, config.DownstreamURL, tracer))
 	mux.Handle("/metrics", handleGetMetrics(ctx, logger, metricsFactory))
 }
 
@@ -108,14 +116,18 @@ func handleGetMetrics(ctx context.Context, logger dictionary.Logger, metricsFact
 	})
 }
 
-func handleLookup(ctx context.Context, logger dictionary.Logger, downstreamURL string) http.Handler {
+func handleLookup(ctx context.Context, logger dictionary.Logger, downstreamURL string, tracer trace.Tracer) http.Handler {
 	if downstreamURL == "" {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, span := tracer.Start(ctx, "handleLookup")
+			defer span.End()
 			logger.Info(ctx, "handleLookup called", "downstreamURL", downstreamURL)
 			w.Write([]byte("hey!! lookup"))
 		})
 	} else {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, span := tracer.Start(ctx, "handleLookup")
+			defer span.End()
 			logger.Info(ctx, "handleLookup called", "downstreamURL", downstreamURL)
 			// Define the URL of the external server
 			externalURL := downstreamURL + r.URL.Path
