@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"github.com/StephenGriese/stdlibapp/kitmetrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -57,9 +56,9 @@ type ServiceStatistics interface {
 }
 
 type serviceStats struct {
-	requestCount   kitmetrics.Counter
-	errorCount     kitmetrics.Counter
-	requestLatency kitmetrics.Histogram
+	requestCount   Counter
+	errorCount     Counter
+	requestLatency Histogram
 }
 
 // HTTPHandlerFor will return a new http.Handler for exporting the metrics created via this Factory over HTTP
@@ -77,7 +76,7 @@ func (f Factory) NewServiceStatistics(subsystem string) ServiceStatistics {
 }
 
 // NewServiceStatistics returns a new ServiceStatistics
-func NewServiceStatistics(requestCount, errorCount kitmetrics.Counter, requestLatency kitmetrics.Histogram) ServiceStatistics {
+func NewServiceStatistics(requestCount, errorCount Counter, requestLatency Histogram) ServiceStatistics {
 	return &serviceStats{requestCount, errorCount, requestLatency}
 }
 
@@ -90,7 +89,7 @@ func (s *serviceStats) Update(methodName string, begin time.Time, err error) {
 }
 
 // NewSummary creates and registers a Prometheus SummaryVec, and returns a Summary object.
-func (f Factory) NewSummary(subsystem, name, help string, labelNames []string) *kitmetrics.Summary {
+func (f Factory) NewSummary(subsystem, name, help string, labelNames []string) *Summary {
 	sv := prometheus.NewSummaryVec(prometheus.SummaryOpts{
 		Namespace: f.namespace,
 		Subsystem: CanonicalLabel(subsystem),
@@ -105,11 +104,11 @@ func (f Factory) NewSummary(subsystem, name, help string, labelNames []string) *
 		Objectives: map[float64]float64{0.5: 0.01, 0.75: 0.01, 0.95: 0.01, 0.99: 0.001, 0.999: 0.0001},
 	}, CanonicalLabels(labelNames))
 	f.Registry.MustRegister(sv)
-	return kitmetrics.NewSummary(sv)
+	return NewSummary(sv)
 }
 
 // NewCounter creates and registers a Prometheus CounterVec, and returns a Counter object.
-func (f Factory) NewCounter(subsystem, name, help string, labelNames []string) kitmetrics.Counter {
+func (f Factory) NewCounter(subsystem, name, help string, labelNames []string) Counter {
 	cv := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: f.namespace,
 		Subsystem: CanonicalLabel(subsystem),
@@ -117,7 +116,7 @@ func (f Factory) NewCounter(subsystem, name, help string, labelNames []string) k
 		Help:      help,
 	}, CanonicalLabels(labelNames))
 	f.Registry.MustRegister(cv)
-	return kitmetrics.NewCounter(cv)
+	return NewCounter(cv)
 }
 
 func CanonicalLabels(labels []string) []string {
@@ -135,4 +134,95 @@ func computeDuration(begin time.Time) float64 {
 		d = 0
 	}
 	return d
+}
+
+// Counter describes a metric that accumulates values monotonically.
+// An example of a counter is the number of received HTTP requests.
+type Counter interface {
+	With(labelValues ...string) Counter
+	Add(delta float64)
+}
+
+// Histogram describes a metric that takes repeated observations of the same
+// kind of thing, and produces a statistical summary of those observations,
+// typically expressed as quantiles or buckets. An example of a histogram is
+// HTTP request latencies.
+type Histogram interface {
+	With(labelValues ...string) Histogram
+	Observe(value float64)
+}
+
+// counter implements Counter, via a Prometheus CounterVec.
+type counter struct {
+	cv  *prometheus.CounterVec
+	lvs LabelValues
+}
+
+// With implements Counter.
+func (c *counter) With(labelValues ...string) Counter {
+	return &counter{
+		cv:  c.cv,
+		lvs: c.lvs.With(labelValues...),
+	}
+}
+
+// Add implements Counter.
+func (c *counter) Add(delta float64) {
+	c.cv.With(makeLabels(c.lvs...)).Add(delta)
+}
+
+func makeLabels(labelValues ...string) prometheus.Labels {
+	labels := prometheus.Labels{}
+	for i := 0; i < len(labelValues); i += 2 {
+		labels[labelValues[i]] = labelValues[i+1]
+	}
+	return labels
+}
+
+// Summary implements Histogram, via a Prometheus SummaryVec. The difference
+// between a Summary and a Histogram is that Summaries don't require predefined
+// quantile buckets, but cannot be statistically aggregated.
+type Summary struct {
+	sv  *prometheus.SummaryVec
+	lvs LabelValues
+}
+
+// With implements Histogram.
+func (s *Summary) With(labelValues ...string) Histogram {
+	return &Summary{
+		sv:  s.sv,
+		lvs: s.lvs.With(labelValues...),
+	}
+}
+
+// Observe implements Histogram.
+func (s *Summary) Observe(value float64) {
+	s.sv.With(makeLabels(s.lvs...)).Observe(value)
+}
+
+// NewSummary wraps the SummaryVec and returns a usable Summary object.
+func NewSummary(sv *prometheus.SummaryVec) *Summary {
+	return &Summary{
+		sv: sv,
+	}
+}
+
+// NewCounter wraps the CounterVec and returns a usable Counter object.
+func NewCounter(cv *prometheus.CounterVec) *counter {
+	return &counter{
+		cv: cv,
+	}
+}
+
+// LabelValues is a type alias that provides validation on its With method.
+// Metrics may include it as a member to help them satisfy With semantics and
+// save some code duplication.
+type LabelValues []string
+
+// With validates the input, and returns a new aggregate labelValues.
+func (lvs LabelValues) With(labelValues ...string) LabelValues {
+	if len(labelValues)%2 != 0 {
+		labelValues = append(labelValues, "unknown")
+	}
+	return append(lvs, labelValues...)
 }
