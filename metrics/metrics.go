@@ -1,9 +1,9 @@
 package metrics
 
 import (
-	kitmetrics "github.com/go-kit/kit/metrics"
-	kitprometheus "github.com/go-kit/kit/metrics/prometheus"
-	stdprometheus "github.com/prometheus/client_golang/prometheus"
+	"github.com/StephenGriese/stdlibapp/kitmetrics"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	"strings"
@@ -19,16 +19,16 @@ var fieldKeys = []string{methodField}
 // A Factory is used to create Prometheus metrics
 type Factory struct {
 	namespace string
-	Registry  *stdprometheus.Registry
+	Registry  *prometheus.Registry
 }
 
 // NewFactory will return a new Factory whose metrics will all be created under the given namespace. A new Prometheus
 // Registry will be created for the factory as well. This will also register collectors to export process and Go GC
 // metrics
 func NewFactory(namespace string) Factory {
-	r := stdprometheus.NewRegistry()
-	r.MustRegister(stdprometheus.NewProcessCollector(stdprometheus.ProcessCollectorOpts{}))
-	r.MustRegister(stdprometheus.NewGoCollector())
+	r := prometheus.NewRegistry()
+	r.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	r.MustRegister(collectors.NewGoCollector())
 
 	return Factory{namespace: CanonicalLabel(namespace), Registry: r}
 }
@@ -90,8 +90,8 @@ func (s *serviceStats) Update(methodName string, begin time.Time, err error) {
 }
 
 // NewSummary creates and registers a Prometheus SummaryVec, and returns a Summary object.
-func (f Factory) NewSummary(subsystem, name, help string, labelNames []string) *kitprometheus.Summary {
-	sv := stdprometheus.NewSummaryVec(stdprometheus.SummaryOpts{
+func (f Factory) NewSummary(subsystem, name, help string, labelNames []string) *kitmetrics.Summary {
+	sv := prometheus.NewSummaryVec(prometheus.SummaryOpts{
 		Namespace: f.namespace,
 		Subsystem: CanonicalLabel(subsystem),
 		Name:      CanonicalLabel(name),
@@ -105,19 +105,19 @@ func (f Factory) NewSummary(subsystem, name, help string, labelNames []string) *
 		Objectives: map[float64]float64{0.5: 0.01, 0.75: 0.01, 0.95: 0.01, 0.99: 0.001, 0.999: 0.0001},
 	}, CanonicalLabels(labelNames))
 	f.Registry.MustRegister(sv)
-	return kitprometheus.NewSummary(sv)
+	return kitmetrics.NewSummary(sv)
 }
 
 // NewCounter creates and registers a Prometheus CounterVec, and returns a Counter object.
-func (f Factory) NewCounter(subsystem, name, help string, labelNames []string) *kitprometheus.Counter {
-	cv := stdprometheus.NewCounterVec(stdprometheus.CounterOpts{
+func (f Factory) NewCounter(subsystem, name, help string, labelNames []string) kitmetrics.Counter {
+	cv := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: f.namespace,
 		Subsystem: CanonicalLabel(subsystem),
 		Name:      CanonicalLabel(name),
 		Help:      help,
 	}, CanonicalLabels(labelNames))
 	f.Registry.MustRegister(cv)
-	return kitprometheus.NewCounter(cv)
+	return kitmetrics.NewCounter(cv)
 }
 
 func CanonicalLabels(labels []string) []string {
