@@ -9,8 +9,8 @@ import (
 	"github.com/StephenGriese/stdlibapp/metrics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+	"io"
 
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -105,7 +105,7 @@ func addRoutes(
 	metricsFactory metrics.Factory,
 	tracer trace.Tracer,
 ) {
-	mux.Handle("/lookup", handleLookup(ctx, logger, config.DownstreamURL, tracer))
+	mux.Handle("/lookup", handleLookup(ctx, logger, config.DownstreamURL, metricsFactory.NewServiceStatistics("lookup"), tracer))
 	mux.Handle("/metrics", handleGetMetrics(ctx, logger, metricsFactory))
 }
 
@@ -116,7 +116,7 @@ func handleGetMetrics(ctx context.Context, logger dictionary.Logger, metricsFact
 	})
 }
 
-func handleLookup(ctx context.Context, logger dictionary.Logger, downstreamURL string, tracer trace.Tracer) http.Handler {
+func handleLookup(ctx context.Context, logger dictionary.Logger, downstreamURL string, serviceStatistics metrics.ServiceStatistics, tracer trace.Tracer) http.Handler {
 	if downstreamURL == "" {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx, span := tracer.Start(ctx, "handleLookup")
@@ -148,7 +148,8 @@ func handleLookup(ctx context.Context, logger dictionary.Logger, downstreamURL s
 
 			// Create an HTTP client
 			client := &http.Client{
-				Timeout: 10 * time.Second,
+				Timeout:   10 * time.Second,
+				Transport: dictionary.LoggingRoundTripper{Proxied: http.DefaultTransport, Statistic: serviceStatistics},
 			}
 
 			// Make the request to the external server
@@ -160,7 +161,7 @@ func handleLookup(ctx context.Context, logger dictionary.Logger, downstreamURL s
 			defer resp.Body.Close()
 
 			// Read the response body
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				http.Error(w, "Failed to read response body", http.StatusInternalServerError)
 				return
