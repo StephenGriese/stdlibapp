@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/StephenGriese/stdlibapp/dictionary"
+	"github.com/StephenGriese/stdlibapp/kitmetrics"
 	"github.com/StephenGriese/stdlibapp/logs"
 	"github.com/StephenGriese/stdlibapp/metrics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"io"
+	"strconv"
 
 	"log"
 	"net"
@@ -18,6 +20,11 @@ import (
 	"os/signal"
 	"sync"
 	"time"
+)
+
+const (
+	labelEndpoint = "endpoint"
+	labelStatus   = "status"
 )
 
 func main() {
@@ -105,7 +112,9 @@ func addRoutes(
 	metricsFactory metrics.Factory,
 	tracer trace.Tracer,
 ) {
-	mux.Handle("/lookup", handleLookup(ctx, logger, config.DownstreamURL, metricsFactory.NewServiceStatistics("lookup"), tracer))
+	histogram := newRequestLatencyHistogram(metricsFactory)
+
+	mux.Handle("/lookup", withMetrics(histogram, "lookup", handleLookup(ctx, logger, config.DownstreamURL, metricsFactory.NewServiceStatistics("lookup"), tracer)))
 	mux.Handle("/metrics", handleGetMetrics(ctx, logger, metricsFactory))
 }
 
@@ -186,4 +195,54 @@ func createConfig(getenv func(string) string) Config {
 		Port:          port,
 		DownstreamURL: downstreamURL,
 	}
+}
+
+func withMetrics(histogram kitmetrics.Histogram, label string, handler http.Handler) http.Handler {
+	return metricHandler{
+		histogram: histogram,
+		label:     metrics.CanonicalLabel(label),
+		handler:   handler,
+	}
+}
+
+type metricHandler struct {
+	handler   http.Handler
+	label     string
+	histogram kitmetrics.Histogram
+}
+
+// ServeHTTP implements the http.Handler interface.
+func (mh metricHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	sw := newStatusCapturingResponseWriter(rw)
+
+	defer func(start time.Time) {
+		mh.histogram.With(labelEndpoint, mh.label, labelStatus, strconv.Itoa(sw.status)).Observe(float64(time.Since(start).Milliseconds()))
+	}(time.Now())
+
+	mh.handler.ServeHTTP(sw, r)
+}
+
+// statusWriter implements http.ResponseWriter to capture the http response status code.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func newStatusCapturingResponseWriter(rw http.ResponseWriter) *statusWriter {
+	return &statusWriter{ResponseWriter: rw}
+}
+
+func (w *statusWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusWriter) Write(b []byte) (int, error) {
+	return w.ResponseWriter.Write(b)
+}
+
+func newRequestLatencyHistogram(mf metrics.Factory) kitmetrics.Histogram {
+	buckets := []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 5000}
+	return mf.NewHistogram("http_server", "request_latency_milliseconds", "Total duration of http requests in milliseconds",
+		buckets, []string{labelEndpoint, labelStatus})
 }
